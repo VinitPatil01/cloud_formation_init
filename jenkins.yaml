@@ -89,7 +89,9 @@ Resources:
 Outputs:
   JenkinsURL:
     Description: Url for Jenkins
-    Value: !Sub "http://${MyInstance.PublicIp}:8080"
+    Value: !Sub "http://${EC2Instance.PublicIp}:8080"
+    Export:
+      Name: URL
   JenkinsPasswordS3Url:
     Description: URL of the Jenkins password in S3
     Value: !Sub "https://s3.amazonaws.com/clouformation-init/jenkins-password.txt"
