@@ -59,13 +59,13 @@ Resources:
               command: sudo yum upgrade -y 
         software_install:
           commands:
-            install_java: 
+            01_install_java: 
               command: sudo dnf install java-17-amazon-corretto -y
-            install_jenkins: 
+            02_install_jenkins: 
               command: sudo yum install jenkins -y
-            start_jenkins:
+            03_start_jenkins:
               command: sudo systemctl start jenkins 
-            enable_jenkins:
+            04_enable_jenkins:
               command: sudo systemctl enable jenkins
     Properties:
       InstanceType: "t2.micro"
@@ -73,12 +73,26 @@ Resources:
       KeyName: Vinit
       SecurityGroupIds:
       - sg-05b22a54bd55633d0
+      IamInstanceProfile: arn:aws:iam::211125343133:instance-profile/s3_access
       Tags:
         - Key: Name
           Value: JENKINS_INSTANCE
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
+           yum install -y aws-cli
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --configsets jenkinsinstall --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+          PASSWORD=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
+          aws s3 cp /var/lib/jenkins/secrets/initialAdminPassword s3://cloudformation-init/jenkins-password.txt
     
+Outputs:
+  JenkinsURL:
+    Description: Url for Jenkins
+    Value: !Sub "http://${MyInstance.PublicIp}:8080"
+  JenkinsPasswordS3Url:
+    Description: URL of the Jenkins password in S3
+    Value: !Sub "https://s3.amazonaws.com/clouformation-init/jenkins-password.txt"
+    Export:
+      Name: JenkinsFirstLoginPassword
+
