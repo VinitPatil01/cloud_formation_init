@@ -1,0 +1,84 @@
+Description:  Cloudformation Template to install Jenkins
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          jenkinsinstall:
+          - update_system
+          - install_cfn
+          - repo_and_packages
+          - upgrade_system
+          - software_install
+        update_system:
+          commands:
+            update: 
+              command: yum update -y
+        install_cfn:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack= ${AWS::StackId}
+                region=${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --configsets wordpress_install --region ${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                - /etc/cfn/cfn-hup.conf
+                - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        repo_and_packages:
+          commands:
+            wget:
+              command: |
+                sudo wget -O /etc/yum.repos.d/jenkins.repo \
+                https://pkg.jenkins.io/redhat-stable/jenkins.repo
+            import_key:
+              command: sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+        upgrade_system:
+          commands:
+            upgrade: 
+              command: sudo yum upgrade -y 
+        software_install:
+          commands:
+            install_java: 
+              command: sudo dnf install java-17-amazon-corretto -y
+            install_jenkins: 
+              command: sudo yum install jenkins -y
+            start_jenkins:
+              command: sudo systemctl start jenkins 
+            enable_jenkins:
+              command: sudo systemctl enable jenkins
+    Properties:
+      InstanceType: "t2.micro"
+      ImageId: ami-0ae8f15ae66fe8cda
+      KeyName: Vinit
+      SecurityGroupIds:
+      - sg-05b22a54bd55633d0
+      Tags:
+        - Key: Name
+          Value: JENKINS_INSTANCE
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --configsets jenkinsinstall --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+    
