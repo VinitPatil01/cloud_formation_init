@@ -67,7 +67,8 @@ Resources:
               command: sudo systemctl start jenkins 
             04_enable_jenkins:
               command: sudo systemctl enable jenkins
-    Properties:
+            05_Jenkins_pass:
+              command: sudo aws s3 cp /var/lib/jenkins/secrets/initialAdminPassword s3://cloudformation-init/jenkins-password.txt  && echo /var/lib/jenkins/secrets/initialAdminPassword
       InstanceType: "t2.micro"
       ImageId: ami-0ae8f15ae66fe8cda
       KeyName: Vinit
@@ -83,8 +84,6 @@ Resources:
            yum install -y aws-cli
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --configsets jenkinsinstall --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
-          PASSWORD=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
-          aws s3 cp /var/lib/jenkins/secrets/initialAdminPassword s3://cloudformation-init/jenkins-password.txt
     
 Outputs:
   JenkinsURL:
