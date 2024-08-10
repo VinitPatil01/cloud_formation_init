@@ -100,7 +100,7 @@ Outputs:
       Name: URLnew
   JenkinsPasswordS3Url:
     Description: URL of the Jenkins password in S3
-    Value: !Sub "https://s3.amazonaws.com/clouformation-init/jenkins-password.txt"
+    Value: !Sub "https://s3.amazonaws.com/cloudformation-init/jenkins-password.txt"
     Export:
       Name: JenkinsFirstLoginPasswordnew
 
