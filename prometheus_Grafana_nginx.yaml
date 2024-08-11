@@ -1,0 +1,269 @@
+Description: Cloudformation to install prometheus and grafana
+
+Resources:
+  Ec2Instance: 
+    Type: AWS::EC2::Instance 
+    CreationPolicy: 
+      ResourceSignal:
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          PreSetup:
+          - update_system 
+          - install_cfn
+          - Prometheus_install
+          - Prometheus_config
+          - grafana_install
+        update_system:
+          commands:
+            update: 
+              command: sudo yum update -y 
+        install_cfn:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack= ${AWS::StackId}
+                region=${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Ec2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource Ec2Instance --configsets PreSetup --region ${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                - /etc/cfn/cfn-hup.conf
+                - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        Prometheus_install:
+          commands:
+            01_download_repo:
+              command: | 
+                cd /home/ec2-user 
+                wget https://github.com/prometheus/prometheus/releases/download/v2.1.0/prometheus-2.1.0.linux-amd64.tar.gz
+            02_Configure_prometheus:
+              command: |
+                cd /home/ec2-user
+                tar -xf prometheus-2.1.0.linux-amd64.tar.gz
+                sudo mv prometheus-2.1.0.linux-amd64/prometheus prometheus-2.1.0.linux-amd64/promtool /usr/local/bin 
+                sudo mkdir -p /etc/prometheus /var/lib/prometheus
+                sudo mv prometheus-2.1.0.linux-amd64/consoles prometheus-2.1.0.linux-amd64/console_libraries /etc/prometheus
+            03_create_prometheus_user:
+              command: |
+                sudo useradd -rs /bin/false prometheus
+                sudo chown -R prometheus: /etc/prometheus /var/lib/prometheus
+        Prometheus_config:
+          files: 
+            /etc/hosts:
+              content: !Sub |
+                ${NodeExporterInstance.PublicIp} web_01
+              group: root 
+              owner: root 
+              mode: '000755'
+            /etc/prometheus/prometheus.yml:
+              content: !Sub | 
+                global:
+                  scrape_interval: 10s 
+                scrape_configs:
+                - job_name: 'promethues_metrics'
+                  scrape_interval:  5s
+                  static_configs:
+                  - targets:  ['localhost:9090']
+                - job_name: 'node_exporter_metrics'
+                  scrape_interval:  5s
+                  static_configs:
+                  - targets:  ['web_01:9100']
+              group:  prometheus 
+              owner:  prometheus
+              mode: '000755'
+            /etc/systemd/system/prometheus.service:
+              content: |
+                [Unit]
+                Description=Prometheus
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                User=prometheus
+                Group=prometheus
+                Type=simple
+                ExecStart=/usr/local/bin/prometheus \
+                  --config.file=/etc/prometheus/prometheus.yml \
+                  --storage.tsdb.path=/var/lib/prometheus/data \
+                  --web.console.templates=/etc/prometheus/consoles \
+                  --web.console.libraries=/etc/prometheus/console_libraries \
+                  --web.listen-address=0.0.0.0:9090
+                
+                [Install]
+                WantedBy=multi-user.target
+
+              group:  root
+              owner:  root
+              mode: '000755'
+          commands:
+            01_change_ownership:
+              command: 'sudo chown -R prometheus: /etc/prometheus /var/lib/prometheus'
+            02_start_prometheus:
+              command: |
+                sudo systemctl daemon-reload
+                sudo systemctl enable prometheus
+                sudo systemctl start prometheus
+        grafana_install:
+          files:
+            /etc/yum.repos.d/grafana.repo:
+              content: !Sub |
+                [grafana]
+                name=grafana
+                baseurl=https://packages.grafana.com/oss/rpm
+                repo_gpgcheck=1
+                enabled=1
+                gpgcheck=1
+                gpgkey=https://packages.grafana.com/gpg.key
+              group:  root
+              owner:  root
+              mode: '000755' 
+          commands:
+            grafana_install:
+              command: |
+                cd /home/ec2-user
+                sudo yum update -y
+                sudo yum install -y grafana
+                sudo systemctl daemon-reload
+                sudo systemctl start grafana-server
+                sudo systemctl enable grafana-server.service
+    Properties:
+      InstanceType: "t2.small"
+      ImageId: ami-0ae8f15ae66fe8cda
+      KeyName: Vinit
+      SecurityGroupIds:
+      - sg-0126d626eaaf2c852
+      Tags:
+        - Key: Name
+          Value: Main_instance
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+           yum install -y aws-cli
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Ec2Instance --configsets PreSetup --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Ec2Instance --region ${AWS::Region}
+
+  NodeExporterInstance:
+    Type: AWS::EC2::Instance 
+    CreationPolicy: 
+      ResourceSignal:
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          PreSetup_node:
+          - update_system 
+          - install_cfn
+          - install_node_exporter
+          - configure_node_exporter
+        update_system:
+          commands:
+            update: 
+              command: sudo yum update -y 
+        install_cfn:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack= ${AWS::StackId}
+                region=${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Ec2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource NodeExporterInstance --configsets PreSetup_node --region ${AWS::Region}
+              group: root
+              mode: '000400'
+              owner: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                - /etc/cfn/cfn-hup.conf
+                - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        install_node_exporter:
+          commands:
+            01_download_repo:
+              command: |
+                cd /home/ec2-user
+                wget https://github.com/prometheus/node_exporter/releases/download/v1.1.2/node_exporter-1.1.2.linux-amd64.tar.gz
+            02_extract_file:
+              command: |
+                cd /home/ec2-user
+                tar -xvf node_exporter-1.1.2.linux-amd64.tar.gz
+                mv node_exporter-1.1.2.linux-amd64/node_exporter /usr/local/bin/
+            03_create_node_exporter_user:
+              command: |
+                sudo useradd -rs /bin/false node_exporter
+        configure_node_exporter:
+          files:
+            /etc/systemd/system/node_exporter.service:
+              content: !Sub |
+                [Unit]
+                Description=Node Exporter
+                After=network.target
+
+                [Service]
+                User=node_exporter
+                Group=node_exporter
+                Type=simple
+                ExecStart=/usr/local/bin/node_exporter
+
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            start_node_exporter:
+              command: |
+                sudo systemctl daemon-reload
+                sudo systemctl enable node_exporter 
+                sudo systemctl start node_exporter 
+    Properties:
+      InstanceType: "t2.micro"
+      ImageId: ami-0ae8f15ae66fe8cda
+      KeyName: Vinit
+      SecurityGroupIds:
+      - sg-0126d626eaaf2c852
+      Tags:
+        - Key: Name
+          Value: Node_Exporter_Instace
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+           yum install -y aws-cli
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource NodeExporterInstance --configsets PreSetup_node --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource NodeExporterInstance --region ${AWS::Region}
+
+Outputs:
+  PrometheusURL:
+    Description: Url for Prometheus
+    Value: !Sub "http://${Ec2Instance.PublicIp}:9090"
+    Export:
+      Name: PrometheusURL
+  GrafanaURL:
+    Description: Url for Prometheus
+    Value: !Sub "http://${Ec2Instance.PublicIp}:3000"
+    Export:
+      Name: GrafanaURL
+
+
