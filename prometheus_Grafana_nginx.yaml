@@ -281,5 +281,8 @@ Outputs:
     Value: !Sub "http://${NodeExporterInstance.PublicIp}:9100"
     Export:
       Name: Node Exporter Metrics
+  nginxURL:
+    Description: URL to access nginx
+    Value: !Sub "http://${Ec2Instance.PublicIp}:80"
 
 
