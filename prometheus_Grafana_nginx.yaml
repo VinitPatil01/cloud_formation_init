@@ -259,16 +259,16 @@ Outputs:
     Description: Url for Prometheus
     Value: !Sub "http://${Ec2Instance.PublicIp}:9090"
     Export:
-      Name: Prometheus URL
+      Name: PrometheusURL
   GrafanaURL:
     Description: Url for Prometheus
     Value: !Sub "http://${Ec2Instance.PublicIp}:3000"
     Export:
-      Name: Grafana URL
+      Name: GrafanaURL
   NodeExporterMetrics:
     Description: Url for Prometheus
     Value: !Sub "http://${NodeExporterInstance.PublicIp}:9100"
     Export:
-      Name: Node Exporter Metrics
+      Name: NodeExporterMetrics
 
 
