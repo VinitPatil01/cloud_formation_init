@@ -142,6 +142,17 @@ Resources:
                 sudo systemctl daemon-reload
                 sudo systemctl start grafana-server
                 sudo systemctl enable grafana-server.service
+        nginx_install:
+          commands:
+            01_install:
+              command:  sudo yum install nginx -y
+          files:
+            /var/www/html/index.html:
+              content: |
+                <h1> Hello World! </h1>
+              group: root
+              user: root
+              mode: '000755'
     Properties:
       InstanceType: "t2.small"
       ImageId: ami-0ae8f15ae66fe8cda
